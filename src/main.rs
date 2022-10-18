@@ -1,13 +1,84 @@
-#![feature(proc_macro_hygiene, decl_macro)]
-
 #[macro_use]
 extern crate rocket;
+#[macro_use]
+extern crate diesel;
+use diesel::{prelude::*, table, Insertable, Queryable};
+use rocket::serde::json::Json;
+use rocket_sync_db_pools::database;
+use serde::{Deserialize, Serialize};
 
-#[get("/ping")]
-fn ping() -> &'static str {
-    "pong :)"
+table! {
+    blog_posts (id) {
+        id -> Int4,
+        title -> Varchar,
+        body -> Text,
+        published -> Bool,
+    }
 }
 
-fn main() {
-    rocket::ignite().mount("/health", routes![ping]).launch();
+#[database("my_db")]
+pub struct Db(diesel::PgConnection);
+
+#[derive(Serialize, Deserialize, Clone, Queryable, Debug, Insertable)]
+#[table_name = "blog_posts"]
+struct BlogPost {
+    id: i32,
+    title: String,
+    body: String,
+    published: bool,
+}
+
+#[get("/random")]
+fn get_random_blog_post() -> Json<BlogPost> {
+    Json(BlogPost {
+        id: 1,
+        title: "My first post".to_string(),
+        body: "This is my first post".to_string(),
+        published: true,
+    })
+}
+
+#[get("/<id>")]
+fn get_blog_post(id: i32) -> Json<BlogPost> {
+    Json(BlogPost {
+        id,
+        title: "Some title".to_string(),
+        body: "Some body".to_string(),
+        published: true,
+    })
+}
+
+#[post("/", data = "<blog_post>")]
+async fn create_blog_post(connection: Db, blog_post: Json<BlogPost>) -> Json<BlogPost> {
+    connection
+        .run(move |c| {
+            diesel::insert_into(blog_posts::table)
+                .values(&blog_post.into_inner())
+                .get_result(c)
+        })
+        .await
+        .map(Json)
+        .expect("boo")
+}
+
+#[get("/")]
+async fn get_all_blog_posts(connection: Db) -> Json<Vec<BlogPost>> {
+    connection
+        .run(|c| blog_posts::table.load(c))
+        .await
+        .map(Json)
+        .expect("Failed to fetch blog posts")
+}
+
+#[launch]
+fn rocket() -> _ {
+    rocket::build().attach(Db::fairing()).mount(
+        "/blog-posts",
+        routes![
+            get_random_blog_post,
+            get_blog_post,
+            get_all_blog_posts,
+            create_blog_post
+        ],
+    )
 }
