@@ -1,7 +1,5 @@
--- Your SQL goes here
-CREATE TABLE blog_posts (
+CREATE TABLE flags (
   id SERIAL PRIMARY KEY,
-  title VARCHAR NOT NULL,
-  body TEXT NOT NULL,
-  published BOOLEAN NOT NULL DEFAULT 'f'
+  name VARCHAR NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT 'f'
 )
